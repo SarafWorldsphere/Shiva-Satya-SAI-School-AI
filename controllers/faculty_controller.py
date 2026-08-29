@@ -152,21 +152,21 @@ class FacultyAIController:
     # --- Core Faculty Specific AI Methods ---
     
     def generate_teaching_material(
-    self, 
-    topic: str, 
-    grade_level: str, 
-    user_email: str, 
-    client_name: str,
-    textbook_content: str = "",
-    teacher_name: str = "Not specified",
-    designation: str = "Teacher",
-    section: str = "Not specified",
-    subject: str = "Not specified",
-    no_of_periods: str = "Not specified",
-    date_of_commencement: str = "Not specified",
-    expected_completion: str = "Not specified",
-    actual_completion: str = "Not specified"
-):
+        self, 
+        topic: str, 
+        grade_level: str, 
+        user_email: str, 
+        client_name: str,
+        textbook_content: str = "",
+        teacher_name: str = "Not specified",
+        designation: str = "Teacher",
+        section: str = "Not specified",
+        subject: str = "Not specified",
+        no_of_periods: str = "Not specified",
+        date_of_commencement: str = "Not specified",
+        expected_completion: str = "Not specified",
+        actual_completion: str = "Not specified"
+    ):
         prompt = f"""
 You are an expert, highly experienced school teacher. Your task is to write a comprehensive and deeply detailed lesson plan for the topic "{topic}".
 You MUST base your entire lesson plan STRICTLY on the following textbook content:
@@ -221,7 +221,7 @@ Sign. of the Teacher                                        Sign. of the Dean.
         db = SessionLocal()
         try:
             # Log the AI generation usage
-            log_gemini_usage(db, response, client_name, user_email, "Faculty Dashboard", "Generate Material")
+            log_gemini_usage(db, response, client_name, user_email, "Faculty Dashboard", "Generate Lesson Plan")
             
             # Note: You can add an INSERT statement here to log the lesson plan to your SSS DB 
             # if you need to store it permanently, just like the SGS Node.js version does.
