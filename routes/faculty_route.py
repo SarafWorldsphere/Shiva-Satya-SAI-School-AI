@@ -24,6 +24,15 @@ class MaterialRequest(BaseModel):
     grade_level: str
     user_email: str
     client_name: str = "SSS"
+    textbook_content: str = ""
+    teacher_name: str = "Not specified"
+    designation: str = "Teacher"
+    section: str = "Not specified"
+    subject: str = "Not specified"
+    no_of_periods: str = "Not specified"
+    date_of_commencement: str = "Not specified"
+    expected_completion: str = "Not specified"
+    actual_completion: str = "Not specified"
 
 class QuestionPaperRequest(BaseModel):
     topic: str
@@ -116,8 +125,22 @@ async def audio_translator(
 @router.post("/generate-material")
 async def generate_material(req: MaterialRequest):
     try:
-        material_str = faculty_controller.generate_teaching_material(req.topic, req.grade_level, req.user_email, req.client_name)
-        return {"status": "success", "teaching_material": json.loads(material_str)}
+        material_str = faculty_controller.generate_teaching_material(
+            topic=req.topic, 
+            grade_level=req.grade_level, 
+            user_email=req.user_email, 
+            client_name=req.client_name,
+            textbook_content=req.textbook_content,
+            teacher_name=req.teacher_name,
+            designation=req.designation,
+            section=req.section,
+            subject=req.subject,
+            no_of_periods=req.no_of_periods,
+            date_of_commencement=req.date_of_commencement,
+            expected_completion=req.expected_completion,
+            actual_completion=req.actual_completion
+        )
+        return {"status": "success", "teaching_material": material_str}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
