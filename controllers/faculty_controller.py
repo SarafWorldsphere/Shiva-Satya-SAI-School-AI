@@ -151,22 +151,86 @@ class FacultyAIController:
 
     # --- Core Faculty Specific AI Methods ---
     
-    def generate_teaching_material(self, topic: str, grade_level: str, user_email: str, client_name: str):
+    def generate_teaching_material(
+    self, 
+    topic: str, 
+    grade_level: str, 
+    user_email: str, 
+    client_name: str,
+    textbook_content: str = "",
+    teacher_name: str = "Not specified",
+    designation: str = "Teacher",
+    section: str = "Not specified",
+    subject: str = "Not specified",
+    no_of_periods: str = "Not specified",
+    date_of_commencement: str = "Not specified",
+    expected_completion: str = "Not specified",
+    actual_completion: str = "Not specified"
+):
         prompt = f"""
-        Act as an expert teacher. Generate a lesson plan for '{topic}' suited for '{grade_level}'.
-        Return ONLY valid JSON format.
-        Schema: {{"topic": "...", "grade_level": "...", "material": "...", "activities": ["...", "..."]}}
-        """
+You are an expert, highly experienced school teacher. Your task is to write a comprehensive and deeply detailed lesson plan for the topic "{topic}".
+You MUST base your entire lesson plan STRICTLY on the following textbook content:
+\"\"\"
+{textbook_content}
+\"\"\"
+
+CRITICAL INSTRUCTIONS:
+1. Act like a real teacher planning a detailed, practical lesson. NO generic filler. Write exact teaching strategies, specific real-world examples, and precise questions you will ask.
+2. Format the output EXACTLY matching the structure below. Do not add any extra headings, JSON, or markdown code blocks.
+3. Fill in the bracketed areas with deep, faculty-level detail.
+
+SHIVA SATHYA SAI SCHOOL
+LESSON PLAN
+
+Name of the teacher: {teacher_name}
+Designation: {designation}
+Class & Section: {grade_level} {section}
+Subject: {subject}
+Chapter/Topic: {topic}
+No. Of Periods: {no_of_periods}
+Date of Commencement: {date_of_commencement}
+Expected date of completion: {expected_completion}
+Actual date of completion: {actual_completion}
+
+Learning objectives:
+[Write 3-4 specific, measurable objectives using action verbs. E.g., "Students will be able to calculate...", "Students will identify..."]
+
+Learning outcomes:
+[Write 3-4 specific outcomes detailing exactly what students will demonstrate by the end of the lesson.]
+
+Methodology:
+[Provide a detailed, step-by-step teaching method. E.g., "1. Hook: Start by showing... 2. Direct Instruction: Explain the concept using [specific analogy]. 3. Guided Practice: Solve problem X together..."]
+
+TLM:
+[List specific Teaching Learning Materials. E.g., "Textbook page X, Smartboard presentation on Y, physical props like Z"]
+
+Activities:
+[Detail 1-2 specific classroom activities. E.g., "Think-Pair-Share: Students will pair up to solve...", or "Group Activity: Groups of 4 will analyze..."]
+
+Assessment:
+[List 2-3 exact questions you will ask to check understanding, or describe a specific exit ticket task.]
+
+Home Work:
+[Give a specific, actionable homework assignment related to the exact text provided.]
+
+Sign. of the Teacher                                        Sign. of the Dean.
+"""
+
         response = client.models.generate_content(model=model_name, contents=prompt)
         
         db = SessionLocal()
         try:
+            # Log the AI generation usage
             log_gemini_usage(db, response, client_name, user_email, "Faculty Dashboard", "Generate Material")
+            
+            # Note: You can add an INSERT statement here to log the lesson plan to your SSS DB 
+            # if you need to store it permanently, just like the SGS Node.js version does.
+            
         finally:
             db.close()
             
-        return response.text.replace("```json", "").replace("```", "").strip()
-
+        return response.text.replace("```text", "").replace("```", "").strip()
+    
     # --- BULLETPROOF QUESTION PAPER GENERATOR (SKELETON INJECTION) ---
     def generate_question_paper(self, topic: str, difficulty: str, format_type: str = "all", num_questions: int = 0, user_email: str = "", client_name: str = "", total_marks: int = 50):
         actual_marks = int(num_questions) if (int(num_questions) > 0 and int(total_marks) == 50) else int(total_marks)
