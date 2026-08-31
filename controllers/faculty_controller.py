@@ -179,7 +179,7 @@ CRITICAL INSTRUCTIONS:
 2. Format the output EXACTLY matching the structure below. Do not add any extra headings, JSON, or markdown code blocks.
 3. Fill in the bracketed areas with deep, faculty-level detail.
 
-SHIVA SATHYA SAI SCHOOL
+{teacher_name}
 LESSON PLAN
 
 Name of the teacher: {teacher_name}
