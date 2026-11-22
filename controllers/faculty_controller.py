@@ -1,6 +1,7 @@
 import os
 import base64
 import json
+from typing import List, Optional
 from google.cloud import texttospeech
 from google.cloud import speech
 from google.api_core.client_options import ClientOptions
@@ -157,6 +158,7 @@ class FacultyAIController:
         grade_level: str, 
         user_email: str, 
         client_name: str,
+        syllabus: str = "CBSE",
         textbook_content: str = "",
         teacher_name: str = "Not specified",
         designation: str = "Teacher",
@@ -167,23 +169,29 @@ class FacultyAIController:
         expected_completion: str = "Not specified",
         actual_completion: str = "Not specified"
     ):
+        board_label = syllabus.strip() if syllabus and syllabus.strip() else "CBSE"
+        content_block = (
+            f'You MUST base your entire lesson plan STRICTLY on the following textbook content:\n"""\n{textbook_content}\n"""'
+            if textbook_content and textbook_content.strip()
+            else f'Align strictly with the official {board_label} curriculum standards and textbook scope for Class {grade_level} {subject}.'
+        )
+
         prompt = f"""
-You are an expert, highly experienced school teacher. Your task is to write a comprehensive and deeply detailed lesson plan for the topic "{topic}".
-You MUST base your entire lesson plan STRICTLY on the following textbook content:
-\"\"\"
-{textbook_content}
-\"\"\"
+You are an expert, highly experienced school teacher following the {board_label} syllabus. Your task is to write a comprehensive and deeply detailed lesson plan for the single current topic "{topic}".
+{content_block}
 
 CRITICAL INSTRUCTIONS:
-1. Act like a real teacher planning a detailed, practical lesson. NO generic filler. Write exact teaching strategies, specific real-world examples, and precise questions you will ask.
-2. Format the output EXACTLY matching the structure below. Do not add any extra headings, JSON, or markdown code blocks.
-3. Fill in the bracketed areas with deep, faculty-level detail.
+1. Act like a real teacher planning a detailed, practical lesson aligned with {board_label} pedagogical guidelines. NO generic filler. Write exact teaching strategies, specific real-world examples, and precise questions you will ask.
+2. Focus strictly on the single current topic "{topic}". Do not drift into unrelated chapters or untaught topics.
+3. Format the output EXACTLY matching the structure below. Do not add any extra headings, JSON, or markdown code blocks.
+4. Fill in the bracketed areas with deep, faculty-level detail.
 
 {teacher_name}
 LESSON PLAN
 
 Name of the teacher: {teacher_name}
 Designation: {designation}
+Syllabus / Board: {board_label}
 Class & Section: {grade_level} {section}
 Subject: {subject}
 Chapter/Topic: {topic}
@@ -193,7 +201,7 @@ Expected date of completion: {expected_completion}
 Actual date of completion: {actual_completion}
 
 Learning objectives:
-[Write 3-4 specific, measurable objectives using action verbs. E.g., "Students will be able to calculate...", "Students will identify..."]
+[Write 3-4 specific, measurable objectives using action verbs aligned with {board_label} standards. E.g., "Students will be able to calculate...", "Students will identify..."]
 
 Learning outcomes:
 [Write 3-4 specific outcomes detailing exactly what students will demonstrate by the end of the lesson.]
@@ -211,7 +219,7 @@ Assessment:
 [List 2-3 exact questions you will ask to check understanding, or describe a specific exit ticket task.]
 
 Home Work:
-[Give a specific, actionable homework assignment related to the exact text provided.]
+[Give a specific, actionable homework assignment related to the exact topic "{topic}".]
 
 Sign. of the Teacher                                        Sign. of the Dean.
 """
@@ -231,11 +239,39 @@ Sign. of the Teacher                                        Sign. of the Dean.
             
         return response.text.replace("```text", "").replace("```", "").strip()
     
-    # --- BULLETPROOF QUESTION PAPER GENERATOR (SKELETON INJECTION) ---
-    def generate_question_paper(self, topic: str, difficulty: str, format_type: str = "all", num_questions: int = 0, user_email: str = "", client_name: str = "", total_marks: int = 50):
+    # --- BULLETPROOF QUESTION PAPER GENERATOR (SKELETON INJECTION + COVERED TOPICS) ---
+    def generate_question_paper(
+        self,
+        topic: str = "",
+        difficulty: str = "Medium",
+        format_type: str = "all",
+        num_questions: int = 0,
+        user_email: str = "",
+        client_name: str = "",
+        total_marks: int = 50,
+        topics: Optional[List[str]] = None,
+        syllabus: str = "CBSE"
+    ):
         actual_marks = int(num_questions) if (int(num_questions) > 0 and int(total_marks) == 50) else int(total_marks)
         if actual_marks <= 0:
             actual_marks = 50
+
+        # Normalize covered-topics list (`topics: ["A Square and A Cube", ...]`) with fallback to single `topic`
+        covered_topics = [t.strip() for t in (topics or []) if isinstance(t, str) and t.strip()]
+        if not covered_topics and topic and topic.strip():
+            covered_topics = [topic.strip()]
+
+        topics_display = ", ".join(covered_topics) if covered_topics else "General Syllabus"
+        board_label = syllabus.strip() if syllabus and syllabus.strip() else "CBSE"
+
+        scoping_instruction = f"""
+        SYLLABUS & COVERED TOPICS SCOPING ({board_label}):
+        - Follow the {board_label} exam pattern and curriculum rigor.
+        - Covered Topics List: {json.dumps(covered_topics)}
+        - STRICT CONSTRAINT: You MUST generate questions ONLY from the covered topics listed above. NEVER include questions from untaught topics.
+        - Distribute questions evenly across all {len(covered_topics)} covered topic(s).
+        - Frame every question directly without meta-phrases like "According to the textbook" or "Based on the chapter".
+        """
             
         format_clean = str(format_type).lower().strip() if format_type else "all"
         is_mixed_mode = format_clean in ["all", "all type", "all types", "mixed", "mixed type", "optional", "", "none"]
@@ -264,7 +300,8 @@ Sign. of the Teacher                                        Sign. of the Dean.
                 q_num += 1
             
             prompt = f"""
-            Act as an expert school exam setter. Create a {difficulty} exam paper for '{topic}'.
+            Act as an expert {board_label} school exam setter. Create a {difficulty} exam paper covering: '{topics_display}'.
+            {scoping_instruction}
 
             CRITICAL ANTI-TRUNCATION INSTRUCTION:
             You MUST complete the following JSON structure EXACTLY as it is provided. 
@@ -274,7 +311,9 @@ Sign. of the Teacher                                        Sign. of the Dean.
             Return ONLY valid JSON. Do not include markdown blocks.
             
             {{
-                "topic": "{topic}",
+                "topic": "{topics_display}",
+                "topics": {json.dumps(covered_topics)},
+                "syllabus": "{board_label}",
                 "difficulty": "{difficulty}",
                 "total_marks": {actual_marks},
                 "format": "Mixed",
@@ -290,14 +329,17 @@ Sign. of the Teacher                                        Sign. of the Dean.
                 skeleton.append({"q_num": i, "type": "true_false", "question": "[FILL_IN_QUESTION]", "options": ["True", "False"], "marks": 1, "answer": "[FILL_IN_ANSWER]"})
             
             prompt = f"""
-            Create a {difficulty} exam on '{topic}'.
+            Create a {difficulty} {board_label} exam covering: '{topics_display}'.
+            {scoping_instruction}
             
             CRITICAL ANTI-TRUNCATION INSTRUCTION:
             You MUST complete the following JSON structure EXACTLY. Replace all placeholders.
             DO NOT skip or remove items. Return ONLY valid JSON.
             
             {{
-                "topic": "{topic}",
+                "topic": "{topics_display}",
+                "topics": {json.dumps(covered_topics)},
+                "syllabus": "{board_label}",
                 "difficulty": "{difficulty}",
                 "total_marks": {actual_marks},
                 "format": "True/False",
@@ -312,14 +354,17 @@ Sign. of the Teacher                                        Sign. of the Dean.
                 skeleton.append({"q_num": i, "type": "mcq", "question": "[FILL_IN_QUESTION]", "options": ["[A] Option", "[B] Option", "[C] Option", "[D] Option"], "marks": 1, "answer": "[FILL_IN_ANSWER]"})
                 
             prompt = f"""
-            Create a {difficulty} exam on '{topic}'.
+            Create a {difficulty} {board_label} exam covering: '{topics_display}'.
+            {scoping_instruction}
             
             CRITICAL ANTI-TRUNCATION INSTRUCTION:
             You MUST complete the following JSON structure EXACTLY. Replace all placeholders.
             DO NOT skip or remove items. Return ONLY valid JSON.
             
             {{
-                "topic": "{topic}",
+                "topic": "{topics_display}",
+                "topics": {json.dumps(covered_topics)},
+                "syllabus": "{board_label}",
                 "difficulty": "{difficulty}",
                 "total_marks": {actual_marks},
                 "format": "MCQ",
@@ -334,14 +379,17 @@ Sign. of the Teacher                                        Sign. of the Dean.
                 skeleton.append({"q_num": i, "type": "short_answer", "question": "[FILL_IN_QUESTION]", "marks": 2, "max_characters": 180, "expected_answer": "[FILL_IN_ANSWER]"})
                 
             prompt = f"""
-            Create a {difficulty} exam on '{topic}'.
+            Create a {difficulty} {board_label} exam covering: '{topics_display}'.
+            {scoping_instruction}
             
             CRITICAL ANTI-TRUNCATION INSTRUCTION:
             You MUST complete the following JSON structure EXACTLY. Replace all placeholders.
             DO NOT skip or remove items. Return ONLY valid JSON.
             
             {{
-                "topic": "{topic}",
+                "topic": "{topics_display}",
+                "topics": {json.dumps(covered_topics)},
+                "syllabus": "{board_label}",
                 "difficulty": "{difficulty}",
                 "total_marks": {actual_marks},
                 "format": "Short Answers",
@@ -356,14 +404,17 @@ Sign. of the Teacher                                        Sign. of the Dean.
                 skeleton.append({"q_num": i, "type": "fill_in_the_blank", "question": "[FILL_IN_QUESTION_WITH_BLANK]", "marks": 1, "answer": "[FILL_IN_ANSWER]"})
                 
             prompt = f"""
-            Create a {difficulty} exam on '{topic}'.
+            Create a {difficulty} {board_label} exam covering: '{topics_display}'.
+            {scoping_instruction}
             
             CRITICAL ANTI-TRUNCATION INSTRUCTION:
             You MUST complete the following JSON structure EXACTLY. Replace all placeholders.
             DO NOT skip or remove items. Return ONLY valid JSON.
             
             {{
-                "topic": "{topic}",
+                "topic": "{topics_display}",
+                "topics": {json.dumps(covered_topics)},
+                "syllabus": "{board_label}",
                 "difficulty": "{difficulty}",
                 "total_marks": {actual_marks},
                 "format": "Fill in the Blanks",
@@ -441,7 +492,7 @@ Sign. of the Teacher                                        Sign. of the Dean.
         
         db = SessionLocal()
         try:
-            log_gemini_usage(db, response, client_name, user_email, "Faculty Dashboard", "Fetch Exam Structure")
+            log_gemini_usage(db, response, user_email, "Faculty Dashboard", "Fetch Exam Structure")
         finally:
             db.close()
             
