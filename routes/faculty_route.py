@@ -1,12 +1,15 @@
 import json
+from typing import List, Optional
 from fastapi import APIRouter, File, UploadFile, HTTPException, Form
 from pydantic import BaseModel
 from controllers.faculty_controller import FacultyAIController
+from controllers.auto_correction_controller import AutoCorrectionController
 
 router = APIRouter()
 faculty_controller = FacultyAIController()
+auto_correction_controller = AutoCorrectionController()
 
-# --- Schemas (Updated with Tracking Fields) ---
+# --- Schemas (Updated with Tracking Fields & Syllabus Planner Contract) ---
 class TranslationRequest(BaseModel):
     text: str
     target_language: str
@@ -24,6 +27,7 @@ class MaterialRequest(BaseModel):
     grade_level: str
     user_email: str
     client_name: str = "SSS"
+    syllabus: str = "CBSE"  # "State" | "CBSE"
     textbook_content: str = ""
     teacher_name: str = "Not specified"
     designation: str = "Teacher"
@@ -35,10 +39,13 @@ class MaterialRequest(BaseModel):
     actual_completion: str = "Not specified"
 
 class QuestionPaperRequest(BaseModel):
-    topic: str
-    difficulty: str
-    format_type: str
-    num_questions: int
+    topics: List[str] = []           # Covered topics list e.g. ["A Square and A Cube", ...]
+    topic: Optional[str] = ""        # Optional fallback if single topic is sent
+    syllabus: str = "CBSE"           # "State" | "CBSE"
+    difficulty: str = "Medium"
+    format_type: str = "all"
+    num_questions: int = 0
+    total_marks: int = 50
     user_email: str
     client_name: str = "SSS"
 
@@ -72,7 +79,7 @@ class CompetitiveContentRequest(BaseModel):
     class_level: str
     subject: str
     topic: str
-    content_type: str # 'Quiz' or 'Study Material'
+    content_type: str  # 'Quiz' or 'Study Material'
     user_email: str
     client_name: str = "SSS"
 
@@ -89,7 +96,6 @@ async def translate_script(req: TranslationRequest):
 @router.post("/text-to-voice")
 async def text_to_voice(req: TTSRequest):
     try:
-        # Note: Usually no Gemini tokens used here, but keeping API payload consistent
         return {"status": "success", "audio_base64": faculty_controller.generate_speech(req.text, req.language)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -130,6 +136,7 @@ async def generate_material(req: MaterialRequest):
             grade_level=req.grade_level, 
             user_email=req.user_email, 
             client_name=req.client_name,
+            syllabus=req.syllabus,
             textbook_content=req.textbook_content,
             teacher_name=req.teacher_name,
             designation=req.designation,
@@ -147,7 +154,17 @@ async def generate_material(req: MaterialRequest):
 @router.post("/generate-exam")
 async def generate_exam(req: QuestionPaperRequest):
     try:
-        exam_str = faculty_controller.generate_question_paper(req.topic, req.difficulty, req.format_type, req.num_questions, req.user_email, req.client_name)
+        exam_str = faculty_controller.generate_question_paper(
+            topic=req.topic or "",
+            difficulty=req.difficulty,
+            format_type=req.format_type,
+            num_questions=req.num_questions,
+            user_email=req.user_email,
+            client_name=req.client_name,
+            total_marks=req.total_marks,
+            topics=req.topics,
+            syllabus=req.syllabus
+        )
         return {"status": "success", "question_paper": json.loads(exam_str)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -157,6 +174,53 @@ async def auto_correct(req: AutoCorrectRequest):
     try:
         feedback_str = faculty_controller.auto_correct_answer(req.question, req.student_answer, req.rubric, req.user_email, req.client_name)
         return {"status": "success", "grading_feedback": json.loads(feedback_str)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+
+@router.post("/auto-correct/scan")
+async def scan_and_evaluate_answer_sheet(
+    answer_sheets: List[UploadFile] = File(..., description="Scanned student answer sheet PDF or image pages"),
+    question_paper_file: Optional[UploadFile] = File(None, description="Optional scanned/PDF question paper"),
+    question_paper_json: Optional[str] = Form(None, description="Optional JSON/text of question paper & answer key"),
+    rubric_or_answer_key: Optional[str] = Form(None, description="Optional marking rubric or answer key"),
+    mode: str = Form("direct_grade", description="'direct_grade' or 'verify_teacher'"),
+    subject: str = Form("General"),
+    class_level: str = Form("Not specified"),
+    max_marks: int = Form(50),
+    student_name: str = Form("Unknown Student"),
+    roll_number: str = Form(""),
+    user_email: str = Form(...),
+    client_name: str = Form("SSS")
+):
+    try:
+        sheet_payloads = []
+        for sheet in answer_sheets:
+            file_bytes = await sheet.read()
+            sheet_payloads.append((file_bytes, sheet.content_type or "application/pdf"))
+
+        qp_payload = None
+        if question_paper_file:
+            qp_bytes = await question_paper_file.read()
+            if qp_bytes:
+                qp_payload = (qp_bytes, question_paper_file.content_type or "application/pdf")
+
+        evaluation = auto_correction_controller.evaluate_answer_sheet(
+            answer_sheet_files=sheet_payloads,
+            mode=mode,
+            question_paper_file=qp_payload,
+            question_paper_json=question_paper_json,
+            rubric_or_answer_key=rubric_or_answer_key,
+            subject=subject,
+            class_level=class_level,
+            max_marks=max_marks,
+            student_name=student_name,
+            roll_number=roll_number,
+            user_email=user_email,
+            client_name=client_name
+        )
+        return {"status": "success", "evaluation": evaluation}
+    except ValueError as ve:
+        raise HTTPException(status_code=400, detail=str(ve))
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
 
