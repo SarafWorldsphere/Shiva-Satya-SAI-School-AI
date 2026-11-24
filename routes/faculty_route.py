@@ -83,6 +83,18 @@ class CompetitiveContentRequest(BaseModel):
     user_email: str
     client_name: str = "SSS"
 
+class AcademicPlannerRequest(BaseModel):
+    grade_level: str                          # e.g., "Class 8" or "Class 10" (Class 1 to 12)
+    subject: str                              # e.g., "Social Studies"
+    chapters: List[str] = []                  # Optional list of exact chapter names; if empty, AI uses standard board chapters
+    total_chapters: int = 12                  # Total chapters in subject (default 12)
+    syllabus: str = "CBSE"                    # "State" | "CBSE"
+    academic_year: str = "2026-27"
+    total_teaching_periods: int = 120
+    exam_config: Optional[List[dict]] = None  # Optional custom exam percentages/marks override
+    user_email: str
+    client_name: str = "SSS"
+
 # --- Endpoints ---
 
 @router.post("/translate")
@@ -257,5 +269,25 @@ async def generate_competitive_content(req: CompetitiveContentRequest):
             req.exam_type, req.class_level, req.subject, req.topic, req.content_type, req.user_email, req.client_name
         )
         return {"status": "success", "competitive_content": json.loads(content_str)}
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=str(e))
+    
+
+@router.post("/academic-planner")
+async def generate_academic_subject_planner(req: AcademicPlannerRequest):
+    try:
+        planner_data = faculty_controller.generate_academic_planner(
+            grade_level=req.grade_level,
+            subject=req.subject,
+            chapters=req.chapters,
+            total_chapters=req.total_chapters,
+            syllabus=req.syllabus,
+            academic_year=req.academic_year,
+            total_teaching_periods=req.total_teaching_periods,
+            exam_config=req.exam_config,
+            user_email=req.user_email,
+            client_name=req.client_name
+        )
+        return {"status": "success", "academic_planner": planner_data}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))

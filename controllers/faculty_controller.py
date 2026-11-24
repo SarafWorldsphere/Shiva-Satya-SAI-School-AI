@@ -151,7 +151,8 @@ class FacultyAIController:
 
 
     # --- Core Faculty Specific AI Methods ---
-    
+    #lesson planner
+
     def generate_teaching_material(
         self, 
         topic: str, 
@@ -239,6 +240,161 @@ Sign. of the Teacher                                        Sign. of the Dean.
             
         return response.text.replace("```text", "").replace("```", "").strip()
     
+
+    # --- ACADEMIC SUBJECT PLANNER (CLASS 1 TO 12 - 4 EXAM MILESTONE GRID) ---
+    
+    def generate_academic_planner(
+        self,
+        grade_level: str,
+        subject: str,
+        chapters: Optional[List[str]] = None,
+        total_chapters: int = 12,
+        syllabus: str = "CBSE",
+        academic_year: str = "2026-27",
+        total_teaching_periods: int = 120,
+        exam_config: Optional[List[dict]] = None,
+        user_email: str = "",
+        client_name: str = "SSS"
+    ) -> dict:
+        """
+        Generates a 4-column Academic Subject Planner (Module/Term | Course Contents | Contact Periods | Mapped LO & Exam Pattern)
+        for Classes 1 to 12 across the 4 school assessment milestones (20%, 50%, 70%, 100%).
+        """
+        board_label = syllabus.strip() if syllabus and syllabus.strip() else "CBSE"
+        clean_chapters = [c.strip() for c in (chapters or []) if isinstance(c, str) and c.strip()]
+        num_chapters = len(clean_chapters) if clean_chapters else max(4, int(total_chapters or 12))
+
+        # Default 4-exam school structure if custom exam_config is not passed
+        milestones = exam_config if (isinstance(exam_config, list) and len(exam_config) > 0) else [
+            {"term_no": 1, "exam_name": "Sessional Exam 1", "cumulative_percent": 20, "marks": "20-30 Marks", "lo_code": "LO1"},
+            {"term_no": 2, "exam_name": "Half-Yearly Exam", "cumulative_percent": 50, "marks": "50-70 Marks", "lo_code": "LO2"},
+            {"term_no": 3, "exam_name": "Sessional Exam 2", "cumulative_percent": 70, "marks": "20-30 Marks", "lo_code": "LO3"},
+            {"term_no": 4, "exam_name": "Annual Examination", "cumulative_percent": 100, "marks": "70 Marks", "lo_code": "LO4"},
+        ]
+
+        # Deterministic cumulative chapter slicing (e.g., 12 chapters -> 2, 6, 8, 12)
+        chapter_labels = (
+            clean_chapters
+            if clean_chapters
+            else [f"Chapter {i}" for i in range(1, num_chapters + 1)]
+        )
+
+        partition_plan = []
+        prev_end = 0
+        for idx, m in enumerate(milestones):
+            pct = int(m.get("cumulative_percent", 100))
+            if idx == len(milestones) - 1 or pct >= 100:
+                end_idx = num_chapters
+            else:
+                end_idx = max(prev_end + 1, round((pct / 100.0) * num_chapters))
+                end_idx = min(end_idx, num_chapters)
+
+            newly_added = chapter_labels[prev_end:end_idx]
+            cumulative_list = chapter_labels[:end_idx]
+            weight_share = max(0.1, (end_idx - prev_end) / float(num_chapters))
+            periods_allocated = max(4, round(total_teaching_periods * weight_share))
+
+            partition_plan.append({
+                "module_no": m.get("term_no", idx + 1),
+                "exam_name": m.get("exam_name", f"Term {idx + 1}"),
+                "cumulative_percent": pct,
+                "marks": m.get("marks", "30 Marks"),
+                "newly_taught_chapters": newly_added,
+                "cumulative_exam_chapters": cumulative_list,
+                "contact_periods": periods_allocated,
+                "mapped_lo": m.get("lo_code", f"LO{idx + 1}")
+            })
+            prev_end = end_idx
+
+        chapter_source_note = (
+            f"Use the exact chapter titles provided: {json.dumps(clean_chapters)}."
+            if clean_chapters
+            else f"Use the standard official {board_label} textbook chapter titles and detailed sub-topics for {grade_level} {subject} (total {num_chapters} chapters)."
+        )
+
+        prompt = f"""
+        You are an expert K-12 Academic Curriculum Planner for Indian schools ({board_label} Board).
+        Generate a complete, structured Subject-Wise Academic Planner for:
+        - Class / Grade: {grade_level}
+        - Subject: {subject}
+        - Syllabus / Board: {board_label}
+        - Academic Year: {academic_year}
+        - Total Chapters: {num_chapters}
+        - Total Teaching Periods: {total_teaching_periods}
+
+        {chapter_source_note}
+
+        PRE-CALCULATED 4-EXAM CUMULATIVE SYLLABUS PARTITION (FOLLOW STRICTLY):
+        {json.dumps(partition_plan, indent=2)}
+
+        INSTRUCTIONS:
+        1. Create one structured row/module per exam milestone (Modules 1 to {len(partition_plan)}).
+        2. Under "course_contents", list every newly taught chapter for that module along with its comma-separated key sub-topics and concepts (formatted cleanly like an official university/school syllabus table), followed by a clear note stating the cumulative syllabus scope for the exam (e.g., "Exam Scope (50% Cumulative): Chapters 1 to 6").
+        3. Under "contact_periods", format as "<number> Periods" (matching the pre-calculated periods).
+        4. Under "mapped_outcome", specify the Learning Outcome code (LO1–LO4), exam name, syllabus percentage, marks weightage, and a concise 1-line competency outcome.
+        5. Also provide 3–4 standard textbook/reference readings under "suggested_readings".
+        6. Return ONLY valid JSON matching the exact schema below. Do NOT include markdown backticks.
+
+        REQUIRED JSON SCHEMA:
+        {{
+          "header": {{
+            "school_board": "{board_label}",
+            "academic_year": "{academic_year}",
+            "class_level": "{grade_level}",
+            "subject": "{subject}",
+            "total_chapters": {num_chapters},
+            "total_periods": {total_teaching_periods}
+          }},
+          "columns": [
+            "Module / Exam Term",
+            "Course Contents (Chapters & Sub-Topics)",
+            "Contact Periods",
+            "Mapped LO & Exam Blueprint"
+          ],
+          "modules": [
+            {{
+              "module_no": 1,
+              "exam_name": "Sessional Exam 1",
+              "cumulative_percent": 20,
+              "marks": "20-30 Marks",
+              "newly_taught_chapters": ["Chapter 1...", "Chapter 2..."],
+              "cumulative_exam_chapters": ["Chapter 1...", "Chapter 2..."],
+              "course_contents": "Unit 1 — Chapter Title: Sub-topic 1, Sub-topic 2, Sub-topic 3...\\nUnit 2 — Chapter Title: Sub-topic 1, Sub-topic 2...\\n[Exam Scope: 20% Cumulative Syllabus — Chapters 1 to 2]",
+              "contact_periods": "20 Periods",
+              "mapped_lo": "LO1",
+              "mapped_outcome_details": "LO1 | Sessional Exam 1 (20-30 Marks, 20% Syllabus): Foundational conceptual understanding and recall."
+            }}
+          ],
+          "suggested_readings": [
+            "Official {board_label} {grade_level} {subject} Textbook",
+            "Exemplar Problems & Lab/Activity Manual for {grade_level} {subject}"
+          ]
+        }}
+        """
+
+        response = client.models.generate_content(model=model_name, contents=prompt)
+
+        db = SessionLocal()
+        try:
+            log_gemini_usage(
+                db,
+                response,
+                client_name,
+                user_email,
+                "Faculty Dashboard",
+                f"Generate Academic Subject Planner ({grade_level} {subject})"
+            )
+        finally:
+            db.close()
+
+        cleaned = response.text.replace("```json", "").replace("```", "").strip()
+        start = cleaned.find("{")
+        end = cleaned.rfind("}")
+        if start != -1 and end != -1:
+            cleaned = cleaned[start : end + 1]
+
+        return json.loads(cleaned)
+
     # --- BULLETPROOF QUESTION PAPER GENERATOR (SKELETON INJECTION + COVERED TOPICS) ---
     def generate_question_paper(
         self,
