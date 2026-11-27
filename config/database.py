@@ -1,44 +1,52 @@
-from datetime import datetime, timezone
-from sqlalchemy import text
-from sqlalchemy.orm import Session
-from models import AIUsageLog
+import os
+from sqlalchemy import create_engine, event, text
+from sqlalchemy.ext.declarative import declarative_base
+from sqlalchemy.orm import sessionmaker
+
+# Pull database credentials from your secure .env file
+DB_USER = os.getenv("DB_USER")
+DB_PASSWORD = os.getenv("DB_PASSWORD")
+DB_HOST = os.getenv("DB_HOST")
+DB_PORT = os.getenv("DB_PORT", "5432")
+DB_NAME = os.getenv("DB_NAME")
+DEFAULT_TENANT_ID = os.getenv("DEFAULT_TENANT_ID", "").strip()
+
+if not all([DB_USER, DB_PASSWORD, DB_HOST, DB_NAME]):
+    raise ValueError("⚠️ Database credentials are missing from the .env file!")
+
+# Construct the PostgreSQL connection string
+SQLALCHEMY_DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+
+# Create the database engine
+engine = create_engine(SQLALCHEMY_DATABASE_URL)
+
+# If DEFAULT_TENANT_ID is configured in .env, apply it per checkout so stamp_tenant_id() / RLS sees it
+if DEFAULT_TENANT_ID:
+    @event.listens_for(engine, "checkout")
+    def _set_default_tenant_on_checkout(dbapi_conn, connection_record, connection_proxy):
+        cursor = dbapi_conn.cursor()
+        try:
+            cursor.execute("SELECT set_config('app.tenant_id', %s, false)", (DEFAULT_TENANT_ID,))
+        finally:
+            cursor.close()
+
+# Create a customized session class
+SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
+
+# Create a base class for your database models (schemas) to inherit from
+Base = declarative_base()
+
+# Import models AFTER Base is defined so metadata is registered without circular import
+from models import AIUsageLog  # noqa: E402, F401
 
 
-def log_gemini_usage(
-    db: Session,
-    response,
-    client_name: str,
-    user_email: str,
-    module_name: str,
-    feature_name: str,
-    tenant_id: str | None = None,
-):
-    prompt_tokens = 0
-    completion_tokens = 0
-
-    if hasattr(response, "usage_metadata") and response.usage_metadata:
-        prompt_tokens = getattr(response.usage_metadata, "prompt_token_count", 0) or 0
-        completion_tokens = getattr(response.usage_metadata, "candidates_token_count", 0) or 0
-
-    total_tokens = prompt_tokens + completion_tokens
-
+# Dependency function to use in your routes to get a database session
+def get_db():
+    db = SessionLocal()
     try:
-        if tenant_id:
-            db.execute(text("SELECT set_config('app.tenant_id', :tid, true)"), {"tid": str(tenant_id)})
+        yield db
+    finally:
+        db.close()
 
-        new_log = AIUsageLog(
-            client_name=client_name or "SSS",
-            user_email=user_email or "",
-            module_name=module_name,
-            feature_used=feature_name,
-            prompt_tokens=prompt_tokens,
-            completion_tokens=completion_tokens,
-            total_tokens=total_tokens,
-            created_at=datetime.now(timezone.utc),
-        )
-        db.add(new_log)
-        db.commit()
-        db.refresh(new_log)
-    except Exception as e:
-        print(f"⚠️ Failed to log AI usage to database: {e}")
-        db.rollback()
+
+print("✅ Database configuration loaded successfully.")
