@@ -1,5 +1,7 @@
+from datetime import datetime, timezone
 from sqlalchemy.orm import Session
 from models import AIUsageLog
+
 
 def log_gemini_usage(
     db: Session,
@@ -10,30 +12,28 @@ def log_gemini_usage(
     feature_name: str
 ):
     """
-    Extracts token usage from a Gemini AI response and logs it to the PostgreSQL database.
+    Extracts token usage from a Gemini AI response and logs it to public.ai_usage_logs.
     """
     prompt_tokens = 0
     completion_tokens = 0
 
-    # Safely extract token counts from Gemini's usage_metadata
     if hasattr(response, "usage_metadata") and response.usage_metadata:
-        prompt_tokens = getattr(response.usage_metadata, "prompt_token_count", 0)
-        completion_tokens = getattr(response.usage_metadata, "candidates_token_count", 0)
+        prompt_tokens = getattr(response.usage_metadata, "prompt_token_count", 0) or 0
+        completion_tokens = getattr(response.usage_metadata, "candidates_token_count", 0) or 0
 
     total_tokens = prompt_tokens + completion_tokens
 
-    # Create the database record mapped to your exact requirements
     new_log = AIUsageLog(
-        client_name=client_name,
-        user_email=user_email,
+        client_name=client_name or "SSS",
+        user_email=user_email or "",
         module_name=module_name,
-        feature_name=feature_name,
+        feature_used=feature_name,
         prompt_tokens=prompt_tokens,
         completion_tokens=completion_tokens,
-        total_tokens=total_tokens
+        total_tokens=total_tokens,
+        created_at=datetime.now(timezone.utc),
     )
 
-    # Save to PostgreSQL
     try:
         db.add(new_log)
         db.commit()
