@@ -419,174 +419,224 @@ Sign. of the Teacher                                        Sign. of the Dean.
 
         topics_display = ", ".join(covered_topics) if covered_topics else "General Syllabus"
         board_label = syllabus.strip() if syllabus and syllabus.strip() else "CBSE"
+        clean_client = client_name.strip() if client_name and client_name.strip() else "SSS"
 
         scoping_instruction = f"""
         SYLLABUS & COVERED TOPICS SCOPING ({board_label}):
-        - Follow the {board_label} exam pattern and curriculum rigor.
-        - Covered Topics List: {json.dumps(covered_topics)}
-        - STRICT CONSTRAINT: You MUST generate questions ONLY from the covered topics listed above. NEVER include questions from untaught topics.
-        - Distribute questions evenly across all {len(covered_topics)} covered topic(s).
-        - Frame every question directly without meta-phrases like "According to the textbook" or "Based on the chapter".
+- Follow the {board_label} exam pattern and curriculum rigor.
+- Covered Topics List: {json.dumps(covered_topics)}
+- STRICT CONSTRAINT: You MUST generate questions ONLY from the covered topics listed above. NEVER include questions from untaught topics.
+- Distribute questions evenly across all {len(covered_topics)} covered topic(s).
+- Frame every question directly without meta-phrases like "According to the textbook" or "Based on the chapter".
         """
-            
+
         format_clean = str(format_type).lower().strip() if format_type else "all"
-        is_mixed_mode = format_clean in ["all", "all type", "all types", "mixed", "mixed type", "optional", "", "none"]
-        
+        is_mixed_mode = format_clean in [
+            "all", "all type", "all types", "mixed", "mixed type", "optional", "", "none"
+        ]
+
         skeleton = []
         q_num = 1
+        format_label = "Mixed"
 
         if is_mixed_mode:
             dist = self._calculate_mixed_distribution(actual_marks)
-            
-            # Build an unbreakable JSON skeleton that the AI is FORCED to fill out
-            for _ in range(dist['mcq']):
-                skeleton.append({"q_num": q_num, "type": "mcq", "question": "[FILL_IN_QUESTION]", "options": ["[A] Option", "[B] Option", "[C] Option", "[D] Option"], "marks": 1, "answer": "[FILL_IN_ANSWER]"})
-                q_num += 1
-            for _ in range(dist['true_false']):
-                skeleton.append({"q_num": q_num, "type": "true_false", "question": "[FILL_IN_QUESTION]", "options": ["True", "False"], "marks": 1, "answer": "[FILL_IN_ANSWER]"})
-                q_num += 1
-            for _ in range(dist['fill_in_the_blank']):
-                skeleton.append({"q_num": q_num, "type": "fill_in_the_blank", "question": "[FILL_IN_QUESTION_WITH_BLANK]", "marks": 1, "answer": "[FILL_IN_ANSWER]"})
-                q_num += 1
-            for _ in range(dist['short_answer']):
-                skeleton.append({"q_num": q_num, "type": "short_answer", "question": "[FILL_IN_QUESTION]", "marks": 2, "max_characters": 180, "expected_answer": "[FILL_IN_ANSWER]"})
-                q_num += 1
-            for _ in range(dist['long_answer']):
-                skeleton.append({"q_num": q_num, "type": "long_answer", "question": "[FILL_IN_QUESTION]", "marks": 5, "max_characters": 2000, "expected_answer": "[FILL_IN_ANSWER]"})
-                q_num += 1
-            
-            prompt = f"""
-            Act as an expert {board_label} school exam setter. Create a {difficulty} exam paper covering: '{topics_display}'.
-            {scoping_instruction}
+            format_label = "Mixed"
 
-            CRITICAL ANTI-TRUNCATION INSTRUCTION:
-            You MUST complete the following JSON structure EXACTLY as it is provided. 
-            Replace every "[FILL_IN_...]" placeholder with a real, high-quality question/answer.
-            DO NOT skip, remove, or shorten any part of the array. You must return all {q_num - 1} questions.
-            
-            Return ONLY valid JSON. Do not include markdown blocks.
-            
-            {{
-                "topic": "{topics_display}",
-                "topics": {json.dumps(covered_topics)},
-                "syllabus": "{board_label}",
-                "difficulty": "{difficulty}",
-                "total_marks": {actual_marks},
-                "format": "Mixed",
-                "questions": {json.dumps(skeleton, indent=4)}
-            }}
-            """
+            for _ in range(dist["mcq"]):
+                skeleton.append({
+                    "q_num": q_num,
+                    "type": "mcq",
+                    "question": "[FILL_IN_QUESTION]",
+                    "options": ["[A] Option", "[B] Option", "[C] Option", "[D] Option"],
+                    "marks": 1,
+                    "answer": "[FILL_IN_ANSWER]"
+                })
+                q_num += 1
+            for _ in range(dist["true_false"]):
+                skeleton.append({
+                    "q_num": q_num,
+                    "type": "true_false",
+                    "question": "[FILL_IN_QUESTION]",
+                    "options": ["True", "False"],
+                    "marks": 1,
+                    "answer": "[FILL_IN_ANSWER]"
+                })
+                q_num += 1
+            for _ in range(dist["fill_in_the_blank"]):
+                skeleton.append({
+                    "q_num": q_num,
+                    "type": "fill_in_the_blank",
+                    "question": "[FILL_IN_QUESTION_WITH_BLANK]",
+                    "marks": 1,
+                    "answer": "[FILL_IN_ANSWER]"
+                })
+                q_num += 1
+            for _ in range(dist["short_answer"]):
+                skeleton.append({
+                    "q_num": q_num,
+                    "type": "short_answer",
+                    "question": "[FILL_IN_QUESTION]",
+                    "marks": 2,
+                    "max_characters": 180,
+                    "expected_answer": "[FILL_IN_ANSWER]"
+                })
+                q_num += 1
+            for _ in range(dist["long_answer"]):
+                skeleton.append({
+                    "q_num": q_num,
+                    "type": "long_answer",
+                    "question": "[FILL_IN_QUESTION]",
+                    "marks": 5,
+                    "max_characters": 2000,
+                    "expected_answer": "[FILL_IN_ANSWER]"
+                })
+                q_num += 1
 
         elif "true" in format_clean or "false" in format_clean or "tf" in format_clean:
-            # Force minimum 15 questions for single formats to ensure proper test length
             count = max(15, actual_marks)
             actual_marks = count
+            format_label = "True/False"
             for i in range(1, count + 1):
-                skeleton.append({"q_num": i, "type": "true_false", "question": "[FILL_IN_QUESTION]", "options": ["True", "False"], "marks": 1, "answer": "[FILL_IN_ANSWER]"})
-            
-            prompt = f"""
-            Create a {difficulty} {board_label} exam covering: '{topics_display}'.
-            {scoping_instruction}
-            
-            CRITICAL ANTI-TRUNCATION INSTRUCTION:
-            You MUST complete the following JSON structure EXACTLY. Replace all placeholders.
-            DO NOT skip or remove items. Return ONLY valid JSON.
-            
-            {{
-                "topic": "{topics_display}",
-                "topics": {json.dumps(covered_topics)},
-                "syllabus": "{board_label}",
-                "difficulty": "{difficulty}",
-                "total_marks": {actual_marks},
-                "format": "True/False",
-                "questions": {json.dumps(skeleton, indent=4)}
-            }}
-            """
+                skeleton.append({
+                    "q_num": i,
+                    "type": "true_false",
+                    "question": "[FILL_IN_QUESTION]",
+                    "options": ["True", "False"],
+                    "marks": 1,
+                    "answer": "[FILL_IN_ANSWER]"
+                })
 
         elif "mcq" in format_clean or "quiz" in format_clean:
             count = max(15, actual_marks)
             actual_marks = count
+            format_label = "MCQ"
             for i in range(1, count + 1):
-                skeleton.append({"q_num": i, "type": "mcq", "question": "[FILL_IN_QUESTION]", "options": ["[A] Option", "[B] Option", "[C] Option", "[D] Option"], "marks": 1, "answer": "[FILL_IN_ANSWER]"})
-                
-            prompt = f"""
-            Create a {difficulty} {board_label} exam covering: '{topics_display}'.
-            {scoping_instruction}
-            
-            CRITICAL ANTI-TRUNCATION INSTRUCTION:
-            You MUST complete the following JSON structure EXACTLY. Replace all placeholders.
-            DO NOT skip or remove items. Return ONLY valid JSON.
-            
-            {{
-                "topic": "{topics_display}",
-                "topics": {json.dumps(covered_topics)},
-                "syllabus": "{board_label}",
-                "difficulty": "{difficulty}",
-                "total_marks": {actual_marks},
-                "format": "MCQ",
-                "questions": {json.dumps(skeleton, indent=4)}
-            }}
-            """
+                skeleton.append({
+                    "q_num": i,
+                    "type": "mcq",
+                    "question": "[FILL_IN_QUESTION]",
+                    "options": ["[A] Option", "[B] Option", "[C] Option", "[D] Option"],
+                    "marks": 1,
+                    "answer": "[FILL_IN_ANSWER]"
+                })
 
         elif "short" in format_clean:
             count = max(15, actual_marks // 2)
             actual_marks = count * 2
+            format_label = "Short Answers"
             for i in range(1, count + 1):
-                skeleton.append({"q_num": i, "type": "short_answer", "question": "[FILL_IN_QUESTION]", "marks": 2, "max_characters": 180, "expected_answer": "[FILL_IN_ANSWER]"})
-                
-            prompt = f"""
-            Create a {difficulty} {board_label} exam covering: '{topics_display}'.
-            {scoping_instruction}
-            
-            CRITICAL ANTI-TRUNCATION INSTRUCTION:
-            You MUST complete the following JSON structure EXACTLY. Replace all placeholders.
-            DO NOT skip or remove items. Return ONLY valid JSON.
-            
-            {{
-                "topic": "{topics_display}",
-                "topics": {json.dumps(covered_topics)},
-                "syllabus": "{board_label}",
-                "difficulty": "{difficulty}",
-                "total_marks": {actual_marks},
-                "format": "Short Answers",
-                "questions": {json.dumps(skeleton, indent=4)}
-            }}
-            """
+                skeleton.append({
+                    "q_num": i,
+                    "type": "short_answer",
+                    "question": "[FILL_IN_QUESTION]",
+                    "marks": 2,
+                    "max_characters": 180,
+                    "expected_answer": "[FILL_IN_ANSWER]"
+                })
 
         elif "fill" in format_clean or "blank" in format_clean:
             count = max(15, actual_marks)
             actual_marks = count
+            format_label = "Fill in the Blanks"
             for i in range(1, count + 1):
-                skeleton.append({"q_num": i, "type": "fill_in_the_blank", "question": "[FILL_IN_QUESTION_WITH_BLANK]", "marks": 1, "answer": "[FILL_IN_ANSWER]"})
-                
-            prompt = f"""
-            Create a {difficulty} {board_label} exam covering: '{topics_display}'.
-            {scoping_instruction}
-            
-            CRITICAL ANTI-TRUNCATION INSTRUCTION:
-            You MUST complete the following JSON structure EXACTLY. Replace all placeholders.
-            DO NOT skip or remove items. Return ONLY valid JSON.
-            
-            {{
-                "topic": "{topics_display}",
-                "topics": {json.dumps(covered_topics)},
-                "syllabus": "{board_label}",
-                "difficulty": "{difficulty}",
-                "total_marks": {actual_marks},
-                "format": "Fill in the Blanks",
-                "questions": {json.dumps(skeleton, indent=4)}
-            }}
-            """
+                skeleton.append({
+                    "q_num": i,
+                    "type": "fill_in_the_blank",
+                    "question": "[FILL_IN_QUESTION_WITH_BLANK]",
+                    "marks": 1,
+                    "answer": "[FILL_IN_ANSWER]"
+                })
+
+        elif "long" in format_clean:
+            count = max(5, actual_marks // 5)
+            actual_marks = count * 5
+            format_label = "Long Answers"
+            for i in range(1, count + 1):
+                skeleton.append({
+                    "q_num": i,
+                    "type": "long_answer",
+                    "question": "[FILL_IN_QUESTION]",
+                    "marks": 5,
+                    "max_characters": 2000,
+                    "expected_answer": "[FILL_IN_ANSWER]"
+                })
+
+        else:
+            # Safe fallback to mixed mode so `prompt` is always initialized
+            dist = self._calculate_mixed_distribution(actual_marks)
+            format_label = "Mixed"
+            for _ in range(dist["mcq"]):
+                skeleton.append({
+                    "q_num": q_num,
+                    "type": "mcq",
+                    "question": "[FILL_IN_QUESTION]",
+                    "options": ["[A] Option", "[B] Option", "[C] Option", "[D] Option"],
+                    "marks": 1,
+                    "answer": "[FILL_IN_ANSWER]"
+                })
+                q_num += 1
+            for _ in range(dist["short_answer"]):
+                skeleton.append({
+                    "q_num": q_num,
+                    "type": "short_answer",
+                    "question": "[FILL_IN_QUESTION]",
+                    "marks": 2,
+                    "max_characters": 180,
+                    "expected_answer": "[FILL_IN_ANSWER]"
+                })
+                q_num += 1
+            for _ in range(dist["long_answer"]):
+                skeleton.append({
+                    "q_num": q_num,
+                    "type": "long_answer",
+                    "question": "[FILL_IN_QUESTION]",
+                    "marks": 5,
+                    "max_characters": 2000,
+                    "expected_answer": "[FILL_IN_ANSWER]"
+                })
+                q_num += 1
+
+        total_items = len(skeleton)
+        prompt = f"""
+        Act as an expert {board_label} school exam setter. Create a {difficulty} exam paper covering: '{topics_display}'.
+        {scoping_instruction}
+
+        CRITICAL ANTI-TRUNCATION INSTRUCTION:
+        You MUST complete the following JSON structure EXACTLY as it is provided.
+        Replace every "[FILL_IN_...]" placeholder with a real, high-quality question/answer.
+        DO NOT skip, remove, or shorten any part of the array. You must return all {total_items} questions.
+
+        Return ONLY valid JSON. Do not include markdown blocks.
+
+        {{
+            "topic": "{topics_display}",
+            "topics": {json.dumps(covered_topics)},
+            "syllabus": "{board_label}",
+            "difficulty": "{difficulty}",
+            "total_marks": {actual_marks},
+            "format": "{format_label}",
+            "questions": {json.dumps(skeleton, indent=4)}
+        }}
+        """
 
         response = client.models.generate_content(model=model_name, contents=prompt)
-        
+
         db = SessionLocal()
         try:
-            log_gemini_usage(db, response, client_name, user_email, "Faculty Dashboard", "Generate Exam")
+            log_gemini_usage(db, response, clean_client, user_email, "Faculty Dashboard", "Generate Exam")
         finally:
             db.close()
-            
-        return response.text.replace("```json", "").replace("```", "").strip()
+
+        cleaned = response.text.replace("```json", "").replace("```", "").strip()
+        start = cleaned.find("{")
+        end = cleaned.rfind("}")
+        if start != -1 and end != -1 and end > start:
+            cleaned = cleaned[start : end + 1]
+
+        # Validate JSON structure before returning
+        parsed = json.loads(cleaned)
+        return json.dumps(parsed)
 
     def auto_correct_answer(self, question: str, student_answer: str, rubric: str, user_email: str, client_name: str):
         prompt = f"""
