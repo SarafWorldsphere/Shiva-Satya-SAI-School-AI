@@ -1,36 +1,44 @@
-import os
-from sqlalchemy import create_engine
-from sqlalchemy.ext.declarative import declarative_base
-from sqlalchemy.orm import sessionmaker
+from datetime import datetime, timezone
+from sqlalchemy import text
+from sqlalchemy.orm import Session
+from models import AIUsageLog
 
-# Pull database credentials from your secure .env file
-DB_USER = os.getenv("DB_USER")
-DB_PASSWORD = os.getenv("DB_PASSWORD")
-DB_HOST = os.getenv("DB_HOST")
-DB_PORT = os.getenv("DB_PORT", "5432")
-DB_NAME = os.getenv("DB_NAME")
 
-if not all([DB_USER, DB_PASSWORD, DB_HOST, DB_NAME]):
-    raise ValueError("⚠️ Database credentials are missing from the .env file!")
+def log_gemini_usage(
+    db: Session,
+    response,
+    client_name: str,
+    user_email: str,
+    module_name: str,
+    feature_name: str,
+    tenant_id: str | None = None,
+):
+    prompt_tokens = 0
+    completion_tokens = 0
 
-# Construct the PostgreSQL connection string
-SQLALCHEMY_DATABASE_URL = f"postgresql://{DB_USER}:{DB_PASSWORD}@{DB_HOST}:{DB_PORT}/{DB_NAME}"
+    if hasattr(response, "usage_metadata") and response.usage_metadata:
+        prompt_tokens = getattr(response.usage_metadata, "prompt_token_count", 0) or 0
+        completion_tokens = getattr(response.usage_metadata, "candidates_token_count", 0) or 0
 
-# Create the database engine
-engine = create_engine(SQLALCHEMY_DATABASE_URL)
+    total_tokens = prompt_tokens + completion_tokens
 
-# Create a customized session class
-SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
-
-# Create a base class for your database models (schemas) to inherit from
-Base = declarative_base()
-
-# Dependency function to use in your routes to get a database session
-def get_db():
-    db = SessionLocal()
     try:
-        yield db
-    finally:
-        db.close()
+        if tenant_id:
+            db.execute(text("SELECT set_config('app.tenant_id', :tid, true)"), {"tid": str(tenant_id)})
 
-print("✅ Database configuration loaded successfully.")
+        new_log = AIUsageLog(
+            client_name=client_name or "SSS",
+            user_email=user_email or "",
+            module_name=module_name,
+            feature_used=feature_name,
+            prompt_tokens=prompt_tokens,
+            completion_tokens=completion_tokens,
+            total_tokens=total_tokens,
+            created_at=datetime.now(timezone.utc),
+        )
+        db.add(new_log)
+        db.commit()
+        db.refresh(new_log)
+    except Exception as e:
+        print(f"⚠️ Failed to log AI usage to database: {e}")
+        db.rollback()
