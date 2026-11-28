@@ -9,7 +9,7 @@ router = APIRouter()
 faculty_controller = FacultyAIController()
 auto_correction_controller = AutoCorrectionController()
 
-# --- Schemas (Updated with Tracking Fields & Syllabus Planner Contract) ---
+# --- Schemas (Updated with SCERT AP CCE/CBA, Syllabus-Aligned Competitive Prep & Performance Report Modes) ---
 class TranslationRequest(BaseModel):
     text: str
     target_language: str
@@ -27,7 +27,7 @@ class MaterialRequest(BaseModel):
     grade_level: str
     user_email: str
     client_name: str = "SSS"
-    syllabus: str = "CBSE"  # "State" | "CBSE"
+    syllabus: str = "CBSE"  # "State" | "CBSE" | "SCERT AP"
     textbook_content: str = ""
     teacher_name: str = "Not specified"
     designation: str = "Teacher"
@@ -41,11 +41,14 @@ class MaterialRequest(BaseModel):
 class QuestionPaperRequest(BaseModel):
     topics: List[str] = []           # Covered topics list e.g. ["A Square and A Cube", ...]
     topic: Optional[str] = ""        # Optional fallback if single topic is sent
-    syllabus: str = "CBSE"           # "State" | "CBSE"
+    syllabus: str = "CBSE"           # "State" | "CBSE" | "SCERT AP"
     difficulty: str = "Medium"
     format_type: str = "all"
     num_questions: int = 0
     total_marks: int = 50
+    assessment_type: str = ""        # e.g., "FA1", "FA2", "SA1", "FA3", "FA4", "SA2", "SLIP_TEST"
+    grade_level: str = ""            # e.g., "Class 7", "Class 8"
+    subject: str = ""                # e.g., "Physical Science", "Biological Science", "General Science"
     user_email: str
     client_name: str = "SSS"
 
@@ -65,12 +68,14 @@ class AlertRequest(BaseModel):
 class AssessmentRequest(BaseModel):
     scope_description: str 
     performance_data: dict
+    report_type: str = ""            # Optional: "individual_student" | "whole_class" (auto-detected if omitted)
     user_email: str
     client_name: str = "SSS"
 
 class CompetitiveStructureRequest(BaseModel):
     exam_type: str
     class_level: str
+    syllabus: str = "CBSE"           # "CBSE" | "SCERT AP" | "State"
     user_email: str
     client_name: str = "SSS"
 
@@ -79,7 +84,8 @@ class CompetitiveContentRequest(BaseModel):
     class_level: str
     subject: str
     topic: str
-    content_type: str  # 'Quiz' or 'Study Material'
+    content_type: str                # 'Quiz' or 'Study Material'
+    syllabus: str = "CBSE"           # "CBSE" | "SCERT AP" | "State"
     user_email: str
     client_name: str = "SSS"
 
@@ -175,7 +181,10 @@ async def generate_exam(req: QuestionPaperRequest):
             client_name=req.client_name,
             total_marks=req.total_marks,
             topics=req.topics,
-            syllabus=req.syllabus
+            syllabus=req.syllabus,
+            assessment_type=req.assessment_type,
+            grade_level=req.grade_level,
+            subject=req.subject
         )
         return {"status": "success", "question_paper": json.loads(exam_str)}
     except Exception as e:
@@ -247,7 +256,13 @@ async def generate_alert(req: AlertRequest):
 @router.post("/assess")
 async def evaluate_performance(req: AssessmentRequest):
     try:
-        assessment_str = faculty_controller.evaluate_performance(req.performance_data, req.scope_description, req.user_email, req.client_name)
+        assessment_str = faculty_controller.evaluate_performance(
+            performance_data=req.performance_data,
+            scope_description=req.scope_description,
+            user_email=req.user_email,
+            client_name=req.client_name,
+            report_type=req.report_type
+        )
         return {"status": "success", "assessment_report": json.loads(assessment_str)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
@@ -256,7 +271,11 @@ async def evaluate_performance(req: AssessmentRequest):
 async def get_competitive_structure(req: CompetitiveStructureRequest):
     try:
         structure_str = faculty_controller.get_competitive_exam_structure(
-            req.exam_type, req.class_level, req.user_email, req.client_name
+            exam_type=req.exam_type,
+            class_level=req.class_level,
+            user_email=req.user_email,
+            client_name=req.client_name,
+            syllabus=req.syllabus
         )
         return {"status": "success", "exam_structure": json.loads(structure_str)}
     except Exception as e:
@@ -266,12 +285,18 @@ async def get_competitive_structure(req: CompetitiveStructureRequest):
 async def generate_competitive_content(req: CompetitiveContentRequest):
     try:
         content_str = faculty_controller.generate_competitive_content(
-            req.exam_type, req.class_level, req.subject, req.topic, req.content_type, req.user_email, req.client_name
+            exam_type=req.exam_type,
+            class_level=req.class_level,
+            subject=req.subject,
+            topic=req.topic,
+            content_type=req.content_type,
+            user_email=req.user_email,
+            client_name=req.client_name,
+            syllabus=req.syllabus
         )
         return {"status": "success", "competitive_content": json.loads(content_str)}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
-    
 
 @router.post("/academic-planner")
 async def generate_academic_subject_planner(req: AcademicPlannerRequest):
