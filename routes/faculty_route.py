@@ -316,3 +316,4 @@ async def generate_academic_subject_planner(req: AcademicPlannerRequest):
         return {"status": "success", "academic_planner": planner_data}
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+    
